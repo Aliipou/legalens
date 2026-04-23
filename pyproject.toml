@@ -1,0 +1,39 @@
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[project]
+name = "legalens"
+version = "1.0.0"
+description = "Semantic diff engine for legal documents — find what changed and why it matters"
+readme = "README.md"
+requires-python = ">=3.11"
+license = { text = "MIT" }
+keywords = ["legal", "nlp", "semantic-search", "document-diff", "fastapi", "ai"]
+classifiers = [
+    "Development Status :: 5 - Production/Stable",
+    "Intended Audience :: Legal",
+    "Intended Audience :: Developers",
+    "Topic :: Text Processing :: Linguistic",
+    "Topic :: Scientific/Engineering :: Artificial Intelligence",
+]
+dependencies = [
+    "fastapi==0.111.0",
+    "uvicorn[standard]==0.29.0",
+    "pydantic==2.7.1",
+    "pydantic-settings==2.2.1",
+    "python-multipart==0.0.9",
+    "sentence-transformers==2.7.0",
+    "numpy>=1.26",
+]
+
+[project.optional-dependencies]
+dev = ["pytest>=8.0", "pytest-asyncio>=0.23", "httpx>=0.27", "pytest-timeout>=2.3"]
+
+[tool.pytest.ini_options]
+asyncio_mode = "auto"
+testpaths = ["tests"]
+timeout = 60
+
+[tool.hatch.build.targets.wheel]
+packages = ["app"]
