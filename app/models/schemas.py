@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+from typing import Any
+
 from pydantic import BaseModel, Field
 
 
@@ -25,6 +27,26 @@ class RiskScoreOut(BaseModel):
     combined: float
     level: str
     drivers: list[str]
+    calibration_probs: dict[str, float] = {}
+
+
+class GraphNodeOut(BaseModel):
+    id: str
+    type: str
+    label: str
+    data: dict[str, Any] = {}
+
+
+class GraphEdgeOut(BaseModel):
+    source: str
+    target: str
+    label: str
+    data: dict[str, Any] = {}
+
+
+class ReasoningGraphOut(BaseModel):
+    nodes: list[GraphNodeOut]
+    edges: list[GraphEdgeOut]
 
 
 class ClauseDiffOut(BaseModel):
@@ -40,6 +62,7 @@ class ClauseDiffOut(BaseModel):
     risk: RiskScoreOut
     rule_hits: list[RuleHitOut]
     summary: str
+    reasoning_graph: ReasoningGraphOut | None = None
 
 
 class DiffResponse(BaseModel):

@@ -1,0 +1,183 @@
+version: "1.0"
+
+# Named regex patterns reused across rules.
+# All compiled with re.IGNORECASE.
+patterns:
+  shall: '\bshall\b'
+  may: '\bmay\b'
+  liability_shield: '\b(not\s+(?:be\s+)?liable|no\s+liability|limit(?:ed|ation)\s+of\s+liability|exclude[sd]?\s+(?:all\s+)?liability|liability\s+(?:cap|ceiling|limit))\b'
+  liability_general: '\bliabilit(?:y|ies)\b'
+  penalty: '\b(penalt(?:y|ies)|liquidated\s+damages?|damages?|fine[sd]?|forfeit(?:ure)?)\b'
+  amount: '(?:\$|\u20ac|\u00a3|USD|EUR|GBP)\s*[\d,]+(?:\.\d+)?(?:\s*(?:million|billion|k))?'
+  percent: '\b(\d+(?:\.\d+)?)\s*%'
+  deadline_days: '\b(\d+)\s*(?:calendar\s+)?(?:business\s+)?days?\b'
+  arbitration: '\b(arbitrat(?:ion|e|or)|mediat(?:ion|e)|dispute\s+resolution)\b'
+  jurisdiction: '\b(jurisdict(?:ion|s)|governing\s+law|venue|choice\s+of\s+law|courts?\s+of)\b'
+  waiver: '\b(waiv(?:er|e|ed|es|ing)|relinquish|forfeit)\b'
+  indemnity: '\bindemnif(?:y|ication|ied|ies|ying)\b'
+  termination: '\bterminat(?:e|ion|ed)\b'
+
+# Scope terms generate rules dynamically: scope.{term}_added / scope.{term}_removed.
+scope_terms:
+  critical: [irrevocable, perpetual, irrevocably]
+  high: [exclusive, solely, sole, worldwide, "world-wide"]
+  medium: ["non-exclusive"]
+
+# Rules are evaluated in order. Each rule fires at most once per clause pair.
+# match: all  → every condition must be true (default)
+# match: any  → at least one condition must be true
+rules:
+  - id: obligation.shall_to_may
+    severity: critical
+    match: all
+    conditions:
+      - {op: count_was_positive, pattern: shall}
+      - {op: count_is_zero,      pattern: shall}
+      - {op: count_increased,    pattern: may}
+    description: "Mandatory obligation ('shall') replaced with discretionary language ('may') — obligation weakened."
+    snippet_template:
+      old: "shall ({old_count}x)"
+      new: "may ({new_count}x)"
+
+  - id: obligation.may_to_shall
+    severity: high
+    match: all
+    conditions:
+      - {op: count_increased, pattern: shall}
+    description: "Discretionary 'may' replaced with mandatory 'shall' — obligation strengthened."
+    snippet_template:
+      old: "shall ({old_count}x)"
+      new: "shall ({new_count}x)"
+
+  - id: liability.shield_removed
+    severity: critical
+    match: all
+    conditions:
+      - {op: pattern_removed, pattern: liability_shield}
+    description: "Liability limitation/exclusion clause removed — party may now bear unlimited liability."
+
+  - id: liability.shield_added
+    severity: high
+    match: all
+    conditions:
+      - {op: pattern_added, pattern: liability_shield}
+    description: "New liability limitation/exclusion added."
+
+  - id: liability.frequency_change
+    severity: medium
+    match: all
+    conditions:
+      - {op: count_delta_ge, pattern: liability_general, threshold: 2}
+    description: "Significant change in liability references: {old_count} \u2192 {new_count}."
+
+  - id: penalty.added
+    severity: high
+    match: all
+    conditions:
+      - {op: pattern_added, pattern: penalty}
+    description: "Penalty/damages clause added."
+
+  - id: penalty.removed
+    severity: medium
+    match: all
+    conditions:
+      - {op: pattern_removed, pattern: penalty}
+    description: "Penalty/damages clause removed."
+
+  - id: penalty.amount_change
+    severity: high
+    match: all
+    conditions:
+      - {op: amounts_set_differ, patterns: [amount, percent]}
+    description: "Financial amounts changed."
+
+  - id: deadline.changed
+    severity: dynamic
+    severity_rule:
+      type: numeric_max_delta
+      pattern: deadline_days
+      thresholds:
+        - {delta_gt: 15, severity: high}
+        - {default: medium}
+    match: all
+    conditions:
+      - {op: count_was_positive,  pattern: deadline_days}
+      - {op: count_is_positive,   pattern: deadline_days}
+      - {op: numeric_max_changed, pattern: deadline_days}
+    description: "Deadline {direction}: {old_max} \u2192 {new_max} days."
+    snippet_template:
+      old: "{old_max} days"
+      new: "{new_max} days"
+
+  - id: deadline.added
+    severity: medium
+    match: all
+    conditions:
+      - {op: count_was_zero,    pattern: deadline_days}
+      - {op: count_is_positive, pattern: deadline_days}
+    description: "Time constraint added: {new_max} days."
+
+  - id: deadline.removed
+    severity: medium
+    match: all
+    conditions:
+      - {op: count_was_positive, pattern: deadline_days}
+      - {op: count_is_zero,      pattern: deadline_days}
+    description: "Time constraint removed — no deadline now specified."
+
+  - id: dispute.arbitration_added
+    severity: critical
+    match: all
+    conditions:
+      - {op: pattern_added, pattern: arbitration}
+    description: "Arbitration/dispute resolution clause added — may waive right to court proceedings."
+
+  - id: dispute.arbitration_removed
+    severity: high
+    match: all
+    conditions:
+      - {op: pattern_removed, pattern: arbitration}
+    description: "Arbitration clause removed."
+
+  - id: dispute.jurisdiction_changed
+    severity: high
+    match: all
+    conditions:
+      - {op: pattern_in_both, pattern: jurisdiction}
+      - {op: context_changed,  pattern: jurisdiction, context_chars: 80}
+    description: "Governing law/jurisdiction clause modified."
+
+  - id: rights.waiver_added
+    severity: critical
+    match: all
+    conditions:
+      - {op: pattern_added, pattern: waiver}
+    description: "Waiver of rights added."
+
+  - id: rights.indemnity_added
+    severity: high
+    match: all
+    conditions:
+      - {op: pattern_added, pattern: indemnity}
+    description: "Indemnification obligation added."
+
+  - id: rights.indemnity_removed
+    severity: high
+    match: all
+    conditions:
+      - {op: pattern_removed, pattern: indemnity}
+    description: "Indemnification clause removed."
+
+  - id: term.termination_added
+    severity: high
+    match: all
+    conditions:
+      - {op: pattern_added, pattern: termination}
+    description: "Termination clause added."
+
+  - id: term.termination_removed
+    severity: high
+    match: all
+    conditions:
+      - {op: pattern_removed, pattern: termination}
+    description: "Termination clause removed — exit rights unclear."

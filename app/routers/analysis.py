@@ -9,6 +9,9 @@ from app.models.schemas import (
     ClauseDiffOut,
     DiffRequest,
     DiffResponse,
+    GraphEdgeOut,
+    GraphNodeOut,
+    ReasoningGraphOut,
     RiskScoreOut,
     RuleHitOut,
 )
@@ -36,7 +39,15 @@ def _build_response(result) -> DiffResponse:
             combined=d.risk.combined,
             level=d.risk.level,
             drivers=d.risk.drivers,
+            calibration_probs=d.risk.calibration_probs,
         )
+        graph_out = None
+        if d.reasoning_graph is not None:
+            g = d.reasoning_graph
+            graph_out = ReasoningGraphOut(
+                nodes=[GraphNodeOut(id=n.id, type=n.type, label=n.label, data=n.data) for n in g.nodes],
+                edges=[GraphEdgeOut(source=e.source, target=e.target, label=e.label, data=e.data) for e in g.edges],
+            )
         diffs_out.append(ClauseDiffOut(
             change_type=d.change_type.value,
             match_type=d.match_type,
@@ -50,6 +61,7 @@ def _build_response(result) -> DiffResponse:
             risk=risk_out,
             rule_hits=rule_hits_out,
             summary=d.summary,
+            reasoning_graph=graph_out,
         ))
 
     return DiffResponse(

@@ -5,6 +5,8 @@ from dataclasses import dataclass, field
 from enum import Enum
 
 from app.diff.matcher import ClauseMatch, match_clauses
+from app.diff.reasoning_graph import ReasoningGraph
+from app.diff.reasoning_graph import build as build_graph
 from app.diff.risk_scorer import RiskScore
 from app.diff.risk_scorer import compute as compute_risk
 from app.diff.rule_engine import RuleHit, apply_rules
@@ -27,6 +29,7 @@ class ClauseDiff:
     similarity: float | None
     rule_hits: list[RuleHit]
     risk: RiskScore
+    reasoning_graph: ReasoningGraph | None = None
 
     @property
     def semantic_risk(self) -> str:
@@ -200,6 +203,19 @@ def _build_diff(m: ClauseMatch) -> ClauseDiff:
         node_type=m.old_node.node_type.value,
         heading=m.old_node.heading,
     )
+    graph = build_graph(
+        clause_id=m.old_node.id,
+        old_text=old_text,
+        new_text=new_text,
+        similarity=m.similarity,
+        rule_hits=rule_hits,
+        semantic_score=risk.semantic_score,
+        rule_score=risk.rule_score,
+        structural_score=risk.structural_score,
+        combined=risk.combined,
+        level=risk.level,
+        calibration_probs=risk.calibration_probs,
+    )
     return ClauseDiff(
         change_type=ChangeType.MODIFIED,
         old_clause=m.old_node,
@@ -208,6 +224,7 @@ def _build_diff(m: ClauseMatch) -> ClauseDiff:
         similarity=m.similarity,
         rule_hits=rule_hits,
         risk=risk,
+        reasoning_graph=graph,
     )
 
 
