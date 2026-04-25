@@ -1,12 +1,6 @@
 name: CD — Deploy to Azure
 
 on:
-  push:
-    branches: [main]
-    paths-ignore:
-      - "infra/**"
-      - "*.md"
-      - "k8s/**"
   workflow_dispatch:
     inputs:
       environment:
@@ -22,8 +16,9 @@ concurrency:
 
 jobs:
   deploy:
+    name: Build, push & deploy
     runs-on: ubuntu-latest
-    environment: ${{ inputs.environment || 'production' }}
+    environment: ${{ inputs.environment }}
 
     steps:
       - uses: actions/checkout@v4
@@ -36,29 +31,20 @@ jobs:
       - name: Log in to ACR
         run: az acr login --name ${{ secrets.ACR_NAME }}
 
-      - name: Build & push API image
+      - name: Build and push API
         run: |
           IMAGE=${{ secrets.ACR_NAME }}.azurecr.io/legalens-api:${{ github.sha }}
-          LATEST=${{ secrets.ACR_NAME }}.azurecr.io/legalens-api:latest
-          docker build -t $IMAGE -t $LATEST .
+          docker build -t $IMAGE -t ${{ secrets.ACR_NAME }}.azurecr.io/legalens-api:latest .
           docker push $IMAGE
-          docker push $LATEST
+          docker push ${{ secrets.ACR_NAME }}.azurecr.io/legalens-api:latest
 
-      - name: Build & push frontend image
+      - name: Build and push frontend
         run: |
           IMAGE=${{ secrets.ACR_NAME }}.azurecr.io/legalens-frontend:${{ github.sha }}
-          LATEST=${{ secrets.ACR_NAME }}.azurecr.io/legalens-frontend:latest
-          docker build -t $IMAGE -t $LATEST \
-            --build-arg NEXT_PUBLIC_API_URL=${{ secrets.API_URL }} \
-            ./frontend
+          docker build -t $IMAGE -t ${{ secrets.ACR_NAME }}.azurecr.io/legalens-frontend:latest \
+            --build-arg NEXT_PUBLIC_API_URL=${{ secrets.API_URL }} ./frontend
           docker push $IMAGE
-          docker push $LATEST
-
-      - name: Run DB migrations
-        run: |
-          az webapp ssh --name ${{ secrets.API_APP_NAME }} \
-            --resource-group ${{ secrets.RESOURCE_GROUP }} \
-            --command "cd /app && alembic upgrade head" || true
+          docker push ${{ secrets.ACR_NAME }}.azurecr.io/legalens-frontend:latest
 
       - name: Deploy API
         run: |
@@ -76,11 +62,6 @@ jobs:
 
       - name: Health check
         run: |
-          sleep 30
+          sleep 20
           curl -f ${{ secrets.API_URL }}/health
-          echo "Deployment successful: ${{ github.sha }}"
-
-      - name: Notify on failure
-        if: failure()
-        run: |
-          echo "::error::Deployment failed for ${{ github.sha }}"
+          echo "Deployed ${{ github.sha }} to ${{ inputs.environment }}"

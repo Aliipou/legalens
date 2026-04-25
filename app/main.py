@@ -8,8 +8,11 @@ from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 
-from app.config import settings
-from app.middleware import RateLimitMiddleware, RequestIDMiddleware, SecurityHeadersMiddleware
+from app.middleware import (
+    RateLimitMiddleware,
+    RequestIDMiddleware,
+    SecurityHeadersMiddleware,
+)
 from app.models.schemas import HealthResponse
 from app.routers.analysis import router as analysis_router
 

@@ -1,12 +1,12 @@
 """Patch sentence-transformers model loading so tests run without GPU/download."""
+from unittest.mock import MagicMock
+
 import numpy as np
 import pytest
-from unittest.mock import patch, MagicMock
 
 
 def _fake_embed(texts: list[str], model_name: str) -> np.ndarray:
     """Return deterministic unit vectors based on text hash — no model needed."""
-    rng = np.random.default_rng(42)
     vecs = []
     for t in texts:
         seed = hash(t) % (2**31)

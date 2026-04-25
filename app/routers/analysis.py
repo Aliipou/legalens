@@ -1,12 +1,16 @@
 """Legal document analysis endpoints."""
 from __future__ import annotations
 
-from fastapi import APIRouter, Form, HTTPException, UploadFile, File, status
+from fastapi import APIRouter, File, Form, HTTPException, UploadFile, status
 
 from app.config import settings
 from app.diff.engine import ChangeType, diff_documents
 from app.models.schemas import (
-    ClauseDiffOut, DiffRequest, DiffResponse, RiskScoreOut, RuleHitOut,
+    ClauseDiffOut,
+    DiffRequest,
+    DiffResponse,
+    RiskScoreOut,
+    RuleHitOut,
 )
 
 router = APIRouter(prefix="/v1", tags=["analysis"])

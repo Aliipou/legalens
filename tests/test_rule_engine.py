@@ -1,7 +1,5 @@
 """Tests for legal rule engine — obligation, liability, deadline, arbitration, etc."""
-import pytest
-from app.diff.rule_engine import apply_rules, rule_risk_score, RuleSeverity
-
+from app.diff.rule_engine import RuleSeverity, apply_rules, rule_risk_score
 
 # ── Obligation shift ───────────────────────────────────────────────────────────
 

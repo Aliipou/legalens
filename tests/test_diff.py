@@ -1,7 +1,6 @@
 """Tests for the semantic diff engine (legacy compatibility)."""
-import pytest
 
-from app.diff.engine import diff_documents, ChangeType
+from app.diff.engine import ChangeType, diff_documents
 from app.diff.segmentor import segment
 
 

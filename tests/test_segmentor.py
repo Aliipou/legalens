@@ -1,6 +1,5 @@
 """Tests for robust hierarchical clause segmentor."""
-import pytest
-from app.diff.segmentor import segment, NodeType
+from app.diff.segmentor import NodeType, segment
 
 
 def test_numbered_sections():

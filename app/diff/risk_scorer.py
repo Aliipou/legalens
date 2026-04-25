@@ -30,12 +30,6 @@ _STRUCTURAL_IMPORTANCE = {
     "bullet": 10,
 }
 
-_CRITICAL_SECTIONS = re.compile(
-    r"\b(liability|indemnif|terminat|payment|arbitrat|governing\s+law|confidential|assignment)\b",
-    re.IGNORECASE,
-) if False else None  # lazy import below
-
-
 def _semantic_distance(similarity: float | None) -> float:
     """Convert cosine similarity to a 0-100 risk signal (lower sim = higher risk)."""
     if similarity is None:

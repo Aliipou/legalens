@@ -4,10 +4,11 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 from enum import Enum
 
-from app.diff.matcher import ClauseMatch, MatchType, match_clauses
+from app.diff.matcher import ClauseMatch, match_clauses
+from app.diff.risk_scorer import RiskScore
+from app.diff.risk_scorer import compute as compute_risk
 from app.diff.rule_engine import RuleHit, apply_rules
-from app.diff.risk_scorer import RiskScore, compute as compute_risk
-from app.diff.segmentor import ClauseNode, NodeType, segment
+from app.diff.segmentor import ClauseNode, segment
 
 
 class ChangeType(str, Enum):

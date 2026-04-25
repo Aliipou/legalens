@@ -1,6 +1,5 @@
 """Integration tests for the full diff engine pipeline."""
-import pytest
-from app.diff.engine import diff_documents, ChangeType
+from app.diff.engine import ChangeType, diff_documents
 
 
 def test_identical_documents_no_changes():

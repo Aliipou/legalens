@@ -5,7 +5,7 @@ import time
 import uuid
 from collections import defaultdict
 
-from fastapi import Request, Response
+from fastapi import Request
 from fastapi.responses import JSONResponse
 from starlette.middleware.base import BaseHTTPMiddleware
 
