@@ -1,0 +1,86 @@
+name: CD — Deploy to Azure
+
+on:
+  push:
+    branches: [main]
+    paths-ignore:
+      - "infra/**"
+      - "*.md"
+      - "k8s/**"
+  workflow_dispatch:
+    inputs:
+      environment:
+        description: Target environment
+        required: true
+        default: production
+        type: choice
+        options: [production, staging]
+
+concurrency:
+  group: deploy-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    environment: ${{ inputs.environment || 'production' }}
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Azure login
+        uses: azure/login@v2
+        with:
+          creds: ${{ secrets.AZURE_CREDENTIALS }}
+
+      - name: Log in to ACR
+        run: az acr login --name ${{ secrets.ACR_NAME }}
+
+      - name: Build & push API image
+        run: |
+          IMAGE=${{ secrets.ACR_NAME }}.azurecr.io/legalens-api:${{ github.sha }}
+          LATEST=${{ secrets.ACR_NAME }}.azurecr.io/legalens-api:latest
+          docker build -t $IMAGE -t $LATEST .
+          docker push $IMAGE
+          docker push $LATEST
+
+      - name: Build & push frontend image
+        run: |
+          IMAGE=${{ secrets.ACR_NAME }}.azurecr.io/legalens-frontend:${{ github.sha }}
+          LATEST=${{ secrets.ACR_NAME }}.azurecr.io/legalens-frontend:latest
+          docker build -t $IMAGE -t $LATEST \
+            --build-arg NEXT_PUBLIC_API_URL=${{ secrets.API_URL }} \
+            ./frontend
+          docker push $IMAGE
+          docker push $LATEST
+
+      - name: Run DB migrations
+        run: |
+          az webapp ssh --name ${{ secrets.API_APP_NAME }} \
+            --resource-group ${{ secrets.RESOURCE_GROUP }} \
+            --command "cd /app && alembic upgrade head" || true
+
+      - name: Deploy API
+        run: |
+          az webapp config container set \
+            --name ${{ secrets.API_APP_NAME }} \
+            --resource-group ${{ secrets.RESOURCE_GROUP }} \
+            --container-image-name ${{ secrets.ACR_NAME }}.azurecr.io/legalens-api:${{ github.sha }}
+
+      - name: Deploy frontend
+        run: |
+          az webapp config container set \
+            --name ${{ secrets.FRONTEND_APP_NAME }} \
+            --resource-group ${{ secrets.RESOURCE_GROUP }} \
+            --container-image-name ${{ secrets.ACR_NAME }}.azurecr.io/legalens-frontend:${{ github.sha }}
+
+      - name: Health check
+        run: |
+          sleep 30
+          curl -f ${{ secrets.API_URL }}/health
+          echo "Deployment successful: ${{ github.sha }}"
+
+      - name: Notify on failure
+        if: failure()
+        run: |
+          echo "::error::Deployment failed for ${{ github.sha }}"

@@ -69,7 +69,7 @@ _EXCLUSIVITY = re.compile(
     re.IGNORECASE,
 )
 
-_WAIVER = re.compile(r"\b(waiv(?:er|e|ed)|relinquish|forfeit)\b", re.IGNORECASE)
+_WAIVER = re.compile(r"\b(waiv(?:er|e|ed|es|ing)|relinquish|forfeit)\b", re.IGNORECASE)
 _INDEMNITY = re.compile(r"\bindemnif(?:y|ication|ied|ies)\b", re.IGNORECASE)
 _TERMINATION = re.compile(r"\bterminat(?:e|ion|ed)\b", re.IGNORECASE)
 _ASSIGNMENT = re.compile(r"\bassign(?:ment|able|ed|s)?\b", re.IGNORECASE)

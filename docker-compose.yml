@@ -1,22 +1,127 @@
 version: "3.9"
 
 services:
+  db:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_DB: legalens
+      POSTGRES_USER: legalens
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-legalens_dev}
+    volumes:
+      - pg_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U legalens -d legalens"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    restart: unless-stopped
+
   api:
     build: .
-    ports:
-      - "8000:8000"
+    depends_on:
+      db:
+        condition: service_healthy
     environment:
-      - PORT=8000
-      - DEBUG=false
+      DATABASE_URL: postgresql+asyncpg://legalens:${POSTGRES_PASSWORD:-legalens_dev}@db:5432/legalens
+      PORT: 8000
+      DEBUG: "false"
     healthcheck:
       test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8000/health')"]
       interval: 30s
       timeout: 5s
       retries: 3
-      start_period: 15s
+      start_period: 20s
     restart: unless-stopped
     read_only: true
-    tmpfs:
-      - /tmp
-    security_opt:
-      - no-new-privileges:true
+    tmpfs: [/tmp]
+    security_opt: [no-new-privileges:true]
+
+  frontend:
+    build: ./frontend
+    depends_on:
+      api:
+        condition: service_healthy
+    environment:
+      NEXT_PUBLIC_API_URL: http://nginx/
+      PORT: 3000
+    restart: unless-stopped
+    security_opt: [no-new-privileges:true]
+
+  nginx:
+    build: ./nginx
+    ports:
+      - "80:80"
+    depends_on:
+      api:
+        condition: service_healthy
+      frontend:
+        condition: service_started
+    restart: unless-stopped
+
+  prometheus:
+    image: prom/prometheus:v2.52.0
+    volumes:
+      - ./monitoring/prometheus.yml:/etc/prometheus/prometheus.yml:ro
+      - prometheus_data:/prometheus
+    command:
+      - "--config.file=/etc/prometheus/prometheus.yml"
+      - "--storage.tsdb.path=/prometheus"
+      - "--storage.tsdb.retention.time=15d"
+      - "--web.enable-lifecycle"
+    restart: unless-stopped
+
+  loki:
+    image: grafana/loki:3.0.0
+    volumes:
+      - ./monitoring/loki-config.yml:/etc/loki/local-config.yaml:ro
+      - loki_data:/loki
+    command: -config.file=/etc/loki/local-config.yaml
+    restart: unless-stopped
+
+  promtail:
+    image: grafana/promtail:3.0.0
+    volumes:
+      - /var/lib/docker/containers:/var/lib/docker/containers:ro
+      - /var/log:/var/log:ro
+    command: -config.file=/etc/promtail/config.yml
+    restart: unless-stopped
+
+  grafana:
+    image: grafana/grafana:10.4.2
+    ports:
+      - "3001:3000"
+    environment:
+      GF_SECURITY_ADMIN_PASSWORD: ${GRAFANA_PASSWORD:-admin}
+      GF_USERS_ALLOW_SIGN_UP: "false"
+      GF_SERVER_ROOT_URL: http://localhost:3001
+    volumes:
+      - grafana_data:/var/lib/grafana
+      - ./monitoring/grafana/provisioning:/etc/grafana/provisioning:ro
+    depends_on: [prometheus, loki]
+    restart: unless-stopped
+
+  backup:
+    image: postgres:16-alpine
+    depends_on:
+      db:
+        condition: service_healthy
+    environment:
+      PGHOST: db
+      PGPORT: 5432
+      PGDATABASE: legalens
+      PGUSER: legalens
+      PGPASSWORD: ${POSTGRES_PASSWORD:-legalens_dev}
+      BACKUP_DIR: /backups
+      RETENTION_DAYS: 7
+    volumes:
+      - ./scripts/backup.sh:/backup.sh:ro
+      - backup_data:/backups
+    entrypoint: ["sh", "-c", "chmod +x /backup.sh && crond -f -d 8 && /backup.sh"]
+    restart: unless-stopped
+
+volumes:
+  pg_data:
+  prometheus_data:
+  loki_data:
+  grafana_data:
+  backup_data:
