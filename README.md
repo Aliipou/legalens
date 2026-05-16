@@ -1,66 +1,85 @@
 # LegaLens
 
-> Legal reasoning and change intelligence engine — not just a diff tool.
+> Semantic diff engine for legal documents — clause-level meaning shifts and risk scoring.
 
 [![CI](https://github.com/Aliipou/legalens/actions/workflows/ci.yml/badge.svg)](https://github.com/Aliipou/legalens/actions/workflows/ci.yml)
 [![Python 3.12](https://img.shields.io/badge/python-3.12-blue)](https://python.org)
 [![License: MIT](https://img.shields.io/badge/License-MIT-green.svg)](LICENSE)
 
-LegaLens combines sentence-transformer embeddings with a deterministic legal rule engine to detect what changed in a contract — and *why it matters*. It segments documents into hierarchical clauses, matches them across versions, fires 15+ legal rules on each change, and outputs a hybrid risk score with full explainability.
+---
 
-## Why Not Just `diff`?
+## Problem
 
-`diff` sees characters. LegaLens sees obligations.
-
-It recognises that *"Party A shall pay within 30 days"* becoming *"Party A may pay within 90 days"* is not a typo — it is an obligation weakening (`shall → may`) combined with a deadline extension (30 → 90 days), producing a `critical` risk score with two named rule hits.
+Legal document review is a manual, time-intensive process. When contracts go through revision cycles, lawyers compare versions line-by-line — but clause-level semantic drift is invisible without NLP. A sentence can change meaning entirely while remaining syntactically similar: "Party A shall pay within 30 days" becoming "Party A may pay within 90 days" rewrites an obligation into a discretionary act and extends the deadline by three months. No traditional diff tool catches this as a legal risk. LegaLens was built to make that kind of change explicit, categorised, and scored.
 
 ---
 
 ## Architecture
 
 ```
-Request
-  │
-  ▼
+Document Ingestion
+  |
+  v
 Segmentor          Parse document into hierarchical clause tree
-  │                (sections, (a)(b) subclauses, bullet lists, preamble)
-  ▼
-Matcher            ID-first match by section number, semantic fallback
-  │                via sentence-transformers cosine similarity
-  ▼
-Rule Engine        15+ deterministic legal rules fire on each clause pair
-  │                (obligation shift, liability, penalties, deadlines,
-  │                 arbitration, jurisdiction, exclusivity, waiver, indemnity)
-  ▼
-Risk Scorer        Hybrid score: semantic 30% + rules 55% + structural 15%
-  │                → combined 0–100 → level: low / medium / high / critical
-  ▼
+  |                (sections, (a)(b) subclauses, bullets, preamble)
+  v
+Sentence Embeddings   all-MiniLM-L6-v2 via sentence-transformers
+  |
+  v
+Clause Alignment   ID-first match by section number; semantic cosine
+  |                similarity fallback for unnumbered/reordered clauses
+  v
+Drift Detection    15+ deterministic legal rules fire on each clause pair
+  |                (obligation shift, liability, penalties, deadlines,
+  |                 arbitration, jurisdiction, exclusivity, waiver, indemnity)
+  v
+Risk Scoring       Hybrid: semantic 30% + rules 55% + structural 15%
+  |                -> combined 0-100 -> level: low / medium / high / critical
+  v
 FastAPI            /v1/diff  /v1/diff/upload  /v1/risk-terms
-  │
-  ▼
-Next.js 14         Diff interface with clause cards, risk breakdown, filter bar
+  |
+  v
+Next.js 14         Clause cards, risk breakdown panel, filter bar
 ```
 
 ---
 
-## Detected Risk Patterns
+## Decisions
 
-| Rule | Severity | Example |
-|------|----------|---------|
-| `obligation.shall_to_may` | **CRITICAL** | "shall pay" → "may pay" |
-| `liability.shield_removed` | **CRITICAL** | "not be liable" removed |
-| `dispute.arbitration_added` | **CRITICAL** | New binding arbitration clause |
-| `rights.waiver_added` | **CRITICAL** | "hereby waives all rights" |
-| `scope.irrevocable_added` | **CRITICAL** | "irrevocable perpetual" added |
-| `penalty.amount_change` | **HIGH** | $10,000 → $100,000 |
-| `rights.indemnity_added` | **HIGH** | New indemnification obligation |
-| `term.termination_added` | **HIGH** | Termination clause added |
-| `deadline.changed` | **MEDIUM/HIGH** | 30 days → 90 days |
-| `dispute.jurisdiction_changed` | **HIGH** | Governing law modified |
+**Why sentence-transformers (all-MiniLM-L6-v2)?**
+Domain-agnostic embeddings that work well for English legal text without fine-tuning. The model runs fully offline with no API calls, keeping document content private. It is fast enough for clause-pair comparisons in a request cycle.
+
+**Why cosine similarity for alignment?**
+Clause matching requires a symmetric comparison — it does not matter which document is "source" and which is "target". Cosine similarity is symmetric, bounded [0, 1], and well-understood. It is used as a fallback only; section-number matching is always preferred when available, since two clauses with the same identifier should be compared regardless of semantic drift.
+
+**Why clause-level rather than document-level?**
+Document-level embeddings average out everything, hiding localised changes. A contract can be 98% unchanged with one critical clause rewritten. Clause-level granularity surfaces the specific paragraph, its rule hits, and its individual risk score — giving a lawyer the exact location and nature of the change.
 
 ---
 
-## Quick Start
+## Tech Stack
+
+| Layer | Technology |
+|-------|-----------|
+| API | FastAPI (Python 3.12), uvicorn |
+| Embeddings | sentence-transformers, all-MiniLM-L6-v2 |
+| Rule engine | Deterministic regex + pattern matching (15+ rules) |
+| Storage | PostgreSQL 16 + SQLAlchemy async + asyncpg |
+| Migrations | Alembic |
+| Frontend | Next.js 14, TypeScript, Tailwind CSS |
+| Reverse proxy | nginx |
+| Monitoring | Prometheus + Grafana + Loki |
+| Infra | Terraform -> Azure (VNet, PostgreSQL Flexible Server, ACR, App Service, CDN) |
+| Orchestration | Kubernetes (HPA 2-8 replicas) |
+| CI/CD | GitHub Actions (lint, test, Trivy scan, Azure deploy) |
+
+---
+
+## Running Locally
+
+**Requirements:** Python 3.12+, Docker (optional for full stack)
+
+### API only
 
 ```bash
 git clone https://github.com/Aliipou/legalens
@@ -69,7 +88,7 @@ pip install -r requirements.txt
 uvicorn app.main:app --reload
 ```
 
-Open **[http://localhost:8000/docs](http://localhost:8000/docs)** for the interactive API.
+Open [http://localhost:8000/docs](http://localhost:8000/docs) for the interactive API.
 
 ### Full stack (Docker)
 
@@ -84,136 +103,21 @@ docker compose up
 | API docs | http://localhost/docs |
 | Grafana | http://localhost:3001 |
 
----
-
-## API
-
-### `POST /v1/diff`
-
-```bash
-curl -X POST http://localhost:8000/v1/diff \
-  -H "Content-Type: application/json" \
-  -d '{
-    "old_document": "Party A shall pay within 30 days.",
-    "new_document": "Party A may pay within 90 days. Late payment incurs a 5% penalty."
-  }'
-```
-
-```json
-{
-  "overall_risk": "critical",
-  "summary": "0 added, 0 removed, 1 modified. Overall risk: critical. 1 critical change(s).",
-  "diffs": [{
-    "change_type": "modified",
-    "similarity": 0.72,
-    "risk": {
-      "semantic_score": 28.0,
-      "rule_score": 85,
-      "structural_score": 30,
-      "combined": 63.6,
-      "level": "critical",
-      "drivers": [
-        "[CRITICAL] Mandatory obligation ('shall') replaced with discretionary language ('may')",
-        "[HIGH] Financial amounts changed",
-        "[HIGH] Deadline extended: 30 → 90 days"
-      ]
-    },
-    "rule_hits": [
-      {"rule_id": "obligation.shall_to_may", "severity": "critical"},
-      {"rule_id": "penalty.added", "severity": "high"},
-      {"rule_id": "deadline.changed", "severity": "high"}
-    ]
-  }]
-}
-```
-
-### `POST /v1/diff/upload`
-
-```bash
-curl -X POST http://localhost:8000/v1/diff/upload \
-  -F "old_file=@contract_v1.txt" \
-  -F "new_file=@contract_v2.txt"
-```
-
----
-
-## Risk Score Model
-
-```
-combined = semantic_distance × 0.30
-         + rule_score        × 0.55
-         + structural_score  × 0.15
-
-level:  < 20  → low
-       20–45  → medium
-       45–70  → high
-        > 70  → critical
-```
-
-Structural score is boosted for sections with headings matching liability, payment, termination, or arbitration keywords.
-
----
-
-## Infrastructure
-
-```
-legalens/
-├── app/                  FastAPI backend
-│   ├── diff/             Segmentor, Matcher, Rule Engine, Risk Scorer
-│   ├── database/         SQLAlchemy async + Alembic migrations
-│   ├── middleware.py      Rate limiting, security headers, request IDs
-│   └── routers/          API endpoints
-├── frontend/             Next.js 14 + TypeScript + Tailwind
-├── nginx/                Reverse proxy, rate limiting, CDN cache headers
-├── monitoring/           Prometheus + Grafana + Loki
-├── infra/                Terraform → Azure (VNet, PostgreSQL, ACR, App Service, CDN)
-├── k8s/                  Kubernetes manifests with HPA (2–8 replicas)
-├── scripts/              pg_dump backup + restore with S3/Azure Blob upload
-└── .github/workflows/    CI (test + lint + container + Trivy) / CD (Azure deploy)
-```
-
----
-
-## Tests
+### Running tests
 
 ```bash
 pytest tests/ -q
-# 45 passed in 1.47s
+# 45 passed in ~1.5s (uses deterministic embedding mock — no GPU or network required)
 ```
-
-All 45 tests run against a deterministic embedding mock — no model download required, no GPU, no network. Tests cover:
-
-- Clause segmentation (numbered sections, lettered subclauses, bullets, preamble)
-- All 15 legal rules with edge cases
-- Engine integration (added, removed, modified, unchanged clauses)
-- Risk score bounds, driver generation, summary correctness
 
 ---
 
-## Deployment
+## Known Limitations
 
-### Render / Railway
-
-Set `DATABASE_URL` and deploy. The app reads `postgres://` and rewrites it to `postgresql+asyncpg://` automatically.
-
-### Azure (Terraform)
-
-```bash
-cd infra
-terraform init
-terraform apply -var="db_admin_password=<secret>"
-```
-
-Provisions: VNet + subnets, PostgreSQL Flexible Server, Container Registry, App Service (API + frontend), CDN endpoint with static asset caching.
-
-### Kubernetes
-
-```bash
-kubectl apply -f k8s/namespace.yaml
-kubectl apply -f k8s/
-```
-
-HPA scales API pods 2–8 based on CPU (70%) and memory (80%).
+- **English-only.** The rule engine patterns and the embedding model are tuned for English legal text. Other languages will produce unpredictable rule matches.
+- **No OCR for PDFs.** Input is plain text or `.txt` files. Scanned PDFs are not supported; they must be converted externally before submission.
+- **No court-specific training.** The risk weights and rules are generic contract heuristics. Jurisdiction-specific concepts (e.g. UK indemnity conventions vs. US) are not differentiated.
+- **Similarity threshold is fixed.** The clause-alignment cosine threshold (default 0.85) is a single global value. Highly technical sections with dense jargon may require tuning.
 
 ---
 
